@@ -30,6 +30,16 @@ async function run() {
   try {
     await client.connect();
 
+    // DB & COLLECTIONS
+    const LoanLinkDB = client.db("LoanLinkDB");
+    const loansCollection = LoanLinkDB.collection("Loans");
+
+    // GET 6 LOANS
+    app.get("/loans", async (req, res) => {
+      const result = await loansCollection.find().limit(6).toArray();
+      res.send(result);
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
