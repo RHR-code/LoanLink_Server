@@ -3,7 +3,7 @@ const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 3000;
 require("dotenv").config();
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 // middleware
 app.use(express.json());
@@ -34,8 +34,20 @@ async function run() {
     const LoanLinkDB = client.db("LoanLinkDB");
     const loansCollection = LoanLinkDB.collection("Loans");
 
-    // GET 6 LOANS
+    // GET ALL LOANS
     app.get("/loans", async (req, res) => {
+      const result = await loansCollection.find().toArray();
+      res.send(result);
+    });
+    // GET LOANS BY ID
+    app.get("/loans/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await loansCollection.findOne(query);
+      res.send(result);
+    });
+    // GET 6 LOANS
+    app.get("/popular-loans", async (req, res) => {
       const result = await loansCollection.find().limit(6).toArray();
       res.send(result);
     });
