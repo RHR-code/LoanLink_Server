@@ -41,14 +41,7 @@ async function run() {
       const result = await loansCollection.find().toArray();
       res.send(result);
     });
-    // POST LOAN
-    app.post("/loans", async (req, res) => {
-      const loanApp = req.body;
-      loanApp.Status = "Pending";
-      loanApp.FeeStatus = "Unpaid";
-      const result = await loanApplicationsCollection.insertOne(loanApp);
-      res.send(result);
-    });
+
     // GET LOANS BY ID
     app.get("/loans/:id", async (req, res) => {
       const id = req.params.id;
@@ -62,7 +55,22 @@ async function run() {
       res.send(result);
     });
 
+    // LOAN APPLY RELATED APIS
+    // GET ALL LOAN APPLICATIONS
+    app.get("/loan-application", async (req, res) => {
+      const result = await loanApplicationsCollection.find().toArray();
+      res.send(result);
+    });
+    // APPLY A LOAN
+    app.post("/loan-application", async (req, res) => {
+      const loanApp = req.body;
+      loanApp.Status = "Pending";
+      loanApp.FeeStatus = "Unpaid";
+      const result = await loanApplicationsCollection.insertOne(loanApp);
+      res.send(result);
+    });
     // USER RELATED APIS
+    // ADD A USER
     app.post("/users", async (req, res) => {
       const email = req.body.email;
       const query = { email: email };
@@ -70,9 +78,22 @@ async function run() {
       if (userExists) {
         return;
       }
-      req.body.role = "user";
+      req.body.role = "User";
       req.body.createdAt = new Date();
       const result = await usersCollection.insertOne(req.body);
+      res.send(result);
+    });
+    // GET USERS
+    app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+    // CHANGE A USER ROLE
+    app.patch("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const update = { $set: { role: "Manager" } };
+      const result = await usersCollection.updateOne(query, update);
       res.send(result);
     });
     await client.db("admin").command({ ping: 1 });
