@@ -33,10 +33,20 @@ async function run() {
     // DB & COLLECTIONS
     const LoanLinkDB = client.db("LoanLinkDB");
     const loansCollection = LoanLinkDB.collection("Loans");
-
+    const loanApplicationsCollection =
+      LoanLinkDB.collection("LoanApplications");
+    const usersCollection = LoanLinkDB.collection("users");
     // GET ALL LOANS
     app.get("/loans", async (req, res) => {
       const result = await loansCollection.find().toArray();
+      res.send(result);
+    });
+    // POST LOAN
+    app.post("/loans", async (req, res) => {
+      const loanApp = req.body;
+      loanApp.Status = "Pending";
+      loanApp.FeeStatus = "Unpaid";
+      const result = await loanApplicationsCollection.insertOne(loanApp);
       res.send(result);
     });
     // GET LOANS BY ID
@@ -52,6 +62,19 @@ async function run() {
       res.send(result);
     });
 
+    // USER RELATED APIS
+    app.post("/users", async (req, res) => {
+      const email = req.body.email;
+      const query = { email: email };
+      const userExists = await usersCollection.findOne(query);
+      if (userExists) {
+        return;
+      }
+      req.body.role = "user";
+      req.body.createdAt = new Date();
+      const result = await usersCollection.insertOne(req.body);
+      res.send(result);
+    });
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
