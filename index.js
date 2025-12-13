@@ -61,6 +61,13 @@ async function run() {
       const result = await loanApplicationsCollection.find().toArray();
       res.send(result);
     });
+    // GET LOAN BY ID
+    app.get("/loan-application/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await loanApplicationsCollection.findOne(query);
+      res.send(result);
+    });
     // APPLY A LOAN
     app.post("/loan-application", async (req, res) => {
       const loanApp = req.body;
