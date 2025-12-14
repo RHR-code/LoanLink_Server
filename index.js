@@ -58,7 +58,14 @@ async function run() {
     // LOAN APPLY RELATED APIS
     // GET ALL LOAN APPLICATIONS
     app.get("/loan-application", async (req, res) => {
-      const result = await loanApplicationsCollection.find().toArray();
+      const Status = req.query.Status;
+      console.log(Status);
+
+      const query = {};
+      if (Status) {
+        query.Status = Status;
+      }
+      const result = await loanApplicationsCollection.find(query).toArray();
       res.send(result);
     });
     // GET LOAN BY ID
