@@ -76,6 +76,13 @@ async function run() {
       const result = await loansCollection.updateOne(query, update);
       res.send(result);
     });
+    // DELETE A LOAN BY ID
+    app.delete("/loans/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await loansCollection.deleteOne(query);
+      res.send(result);
+    });
     // GET 6 LOANS
     app.get("/popular-loans", async (req, res) => {
       const result = await loansCollection.find().limit(6).toArray();
