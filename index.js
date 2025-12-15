@@ -49,6 +49,33 @@ async function run() {
       const result = await loansCollection.findOne(query);
       res.send(result);
     });
+    // UPDATE A LOAN BY ID
+    app.patch("/loans/:id", async (req, res) => {
+      const id = req.params.id;
+      const {
+        loan_title,
+        description,
+        interest_rate,
+        category,
+        loan_image,
+        max_limit,
+        available_emi_plans,
+      } = req.body;
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: {
+          loan_title,
+          description,
+          interest_rate,
+          category,
+          loan_image,
+          max_limit,
+          available_emi_plans,
+        },
+      };
+      const result = await loansCollection.updateOne(query, update);
+      res.send(result);
+    });
     // GET 6 LOANS
     app.get("/popular-loans", async (req, res) => {
       const result = await loansCollection.find().limit(6).toArray();
