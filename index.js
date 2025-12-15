@@ -85,7 +85,21 @@ async function run() {
     });
     // GET 6 LOANS
     app.get("/popular-loans", async (req, res) => {
-      const result = await loansCollection.find().limit(6).toArray();
+      const result = await loansCollection
+        .find({ isPopular: true })
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+    // UPDATE A LOAN TO SHOW IN HOMEPAGE
+    app.patch("/popular-loans/:id", async (req, res) => {
+      const id = req.params.id;
+      const isPopular = req.body.isPopular;
+      const updatedAt = new Date();
+      const query = { _id: new ObjectId(id) };
+      const update = { $set: { isPopular: isPopular, updatedAt: updatedAt } };
+      const result = await loansCollection.updateOne(query, update);
       res.send(result);
     });
 
