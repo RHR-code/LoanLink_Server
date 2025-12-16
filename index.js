@@ -5,9 +5,34 @@ const port = process.env.PORT || 3000;
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
+// admin sdk
+let admin = require("firebase-admin");
+
+let serviceAccount = require("./loanlink-firebaseSDK.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 // middleware
 app.use(express.json());
 app.use(cors());
+
+const verifyFBToken = async (req, res, next) => {
+  const Token = req.headers.authorization;
+  if (!Token) {
+    return res.status(401).send({ message: "Unauthorize Access" });
+  }
+  try {
+    const tokenId = Token.split(" ")[1];
+    const decoded = await admin.auth().verifyIdToken(tokenId);
+    console.log("decoded in the token", decoded);
+    req.decoded_email = decoded.email;
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: "Unauthorize Access" });
+  }
+};
 
 // URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.x3egp.mongodb.net/?appName=Cluster0`;
@@ -105,7 +130,7 @@ async function run() {
 
     // LOAN APPLY RELATED APIS
     // GET ALL LOAN APPLICATIONS
-    app.get("/loan-application", async (req, res) => {
+    app.get("/loan-application", verifyFBToken, async (req, res) => {
       const Status = req.query.Status;
       console.log(Status);
 
@@ -149,6 +174,16 @@ async function run() {
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
+    });
+    // GET A USER BY ID
+    app.get("/user-role", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      const result = await usersCollection.findOne(query);
+      res.send({ role: result?.role || "user" });
     });
     // CHANGE A USER ROLE
     app.patch("/users/:id", async (req, res) => {
