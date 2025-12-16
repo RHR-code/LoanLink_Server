@@ -8,7 +8,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 // admin sdk
 let admin = require("firebase-admin");
 
-let serviceAccount = require("./loanlink-firebaseSDK.json");
+let serviceAccount = require("./loanlink-e1e14-firebase-adminsdk.json");
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -75,7 +75,12 @@ async function run() {
 
     // GET ALL LOANS
     app.get("/loans", async (req, res) => {
-      const result = await loansCollection.find().toArray();
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      const result = await loansCollection.find(query).toArray();
       res.send(result);
     });
     app.get(
@@ -101,8 +106,15 @@ async function run() {
       const result = await loansCollection.findOne(query);
       res.send(result);
     });
+
+    // ADD A LOAN
+    app.post("/loans", async (req, res) => {
+      const result = await loansCollection.insertOne(req.body);
+      res.send(result);
+    });
+
     // UPDATE A LOAN BY ID
-    app.patch("/loans/:id", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.patch("/loans/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const {
         loan_title,
@@ -129,7 +141,7 @@ async function run() {
       res.send(result);
     });
     // DELETE A LOAN BY ID
-    app.delete("/loans/:id", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.delete("/loans/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await loansCollection.deleteOne(query);
