@@ -83,6 +83,15 @@ async function run() {
       const result = await loansCollection.find(query).toArray();
       res.send(result);
     });
+    app.get("/loans/dashboard/manager", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      const result = await loansCollection.find(query).toArray();
+      res.send(result);
+    });
     app.get(
       "/loans/dashboard",
       verifyFBToken,
@@ -190,18 +199,31 @@ async function run() {
         res.send(result);
       }
     );
-    // GET LOAN BY ID
-    app.get(
-      "/loan-application/:id",
-      verifyFBToken,
-      verifyAdmin,
-      async (req, res) => {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await loanApplicationsCollection.findOne(query);
-        res.send(result);
+    // GET ALL PENDING LOAN APPLICATIONS
+    app.get("/loan-application/manager", async (req, res) => {
+      const Status = req.query.Status;
+      const query = {};
+      if (Status) {
+        query.Status = Status;
       }
-    );
+      const result = await loanApplicationsCollection.find(query).toArray();
+      res.send(result);
+    });
+    // CHANGE APPLICATION STATUS
+    app.patch("/loan-application/manager/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const update = { $set: { Status: req.body.Status } };
+      const result = await loanApplicationsCollection.updateOne(query, update);
+      res.send(result);
+    });
+    // GET LOAN BY ID
+    app.get("/loan-application/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await loanApplicationsCollection.findOne(query);
+      res.send(result);
+    });
     // APPLY A LOAN
     app.post("/loan-application", async (req, res) => {
       const loanApp = req.body;
