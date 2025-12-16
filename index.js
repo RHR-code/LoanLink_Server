@@ -61,12 +61,39 @@ async function run() {
     const loanApplicationsCollection =
       LoanLinkDB.collection("LoanApplications");
     const usersCollection = LoanLinkDB.collection("users");
+
+    // VERIFY ADMIN MIDDLEWARE
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user.role !== "Admin") {
+        return res.status(403).send({ message: "Forbidden Access" });
+      }
+      next();
+    };
+
     // GET ALL LOANS
     app.get("/loans", async (req, res) => {
       const result = await loansCollection.find().toArray();
       res.send(result);
     });
-
+    app.get(
+      "/loans/dashboard",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await loansCollection.find().toArray();
+        res.send(result);
+      }
+    );
+    // GET LOANS BY ID
+    app.get("/loans/dashboard/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await loansCollection.findOne(query);
+      res.send(result);
+    });
     // GET LOANS BY ID
     app.get("/loans/:id", async (req, res) => {
       const id = req.params.id;
@@ -75,7 +102,7 @@ async function run() {
       res.send(result);
     });
     // UPDATE A LOAN BY ID
-    app.patch("/loans/:id", async (req, res) => {
+    app.patch("/loans/:id", verifyFBToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const {
         loan_title,
@@ -102,7 +129,7 @@ async function run() {
       res.send(result);
     });
     // DELETE A LOAN BY ID
-    app.delete("/loans/:id", async (req, res) => {
+    app.delete("/loans/:id", verifyFBToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await loansCollection.deleteOne(query);
@@ -118,36 +145,51 @@ async function run() {
       res.send(result);
     });
     // UPDATE A LOAN TO SHOW IN HOMEPAGE
-    app.patch("/popular-loans/:id", async (req, res) => {
-      const id = req.params.id;
-      const isPopular = req.body.isPopular;
-      const updatedAt = new Date();
-      const query = { _id: new ObjectId(id) };
-      const update = { $set: { isPopular: isPopular, updatedAt: updatedAt } };
-      const result = await loansCollection.updateOne(query, update);
-      res.send(result);
-    });
+    app.patch(
+      "/popular-loans/:id",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const isPopular = req.body.isPopular;
+        const updatedAt = new Date();
+        const query = { _id: new ObjectId(id) };
+        const update = { $set: { isPopular: isPopular, updatedAt: updatedAt } };
+        const result = await loansCollection.updateOne(query, update);
+        res.send(result);
+      }
+    );
 
     // LOAN APPLY RELATED APIS
     // GET ALL LOAN APPLICATIONS
-    app.get("/loan-application", verifyFBToken, async (req, res) => {
-      const Status = req.query.Status;
-      console.log(Status);
+    app.get(
+      "/loan-application",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const Status = req.query.Status;
+        console.log(Status);
 
-      const query = {};
-      if (Status) {
-        query.Status = Status;
+        const query = {};
+        if (Status) {
+          query.Status = Status;
+        }
+        const result = await loanApplicationsCollection.find(query).toArray();
+        res.send(result);
       }
-      const result = await loanApplicationsCollection.find(query).toArray();
-      res.send(result);
-    });
+    );
     // GET LOAN BY ID
-    app.get("/loan-application/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await loanApplicationsCollection.findOne(query);
-      res.send(result);
-    });
+    app.get(
+      "/loan-application/:id",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await loanApplicationsCollection.findOne(query);
+        res.send(result);
+      }
+    );
     // APPLY A LOAN
     app.post("/loan-application", async (req, res) => {
       const loanApp = req.body;
@@ -171,7 +213,7 @@ async function run() {
       res.send(result);
     });
     // GET USERS
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyFBToken, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
@@ -186,7 +228,7 @@ async function run() {
       res.send({ role: result?.role || "user" });
     });
     // CHANGE A USER ROLE
-    app.patch("/users/:id", async (req, res) => {
+    app.patch("/users/:id", verifyFBToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const update = { $set: { role: "Manager" } };
