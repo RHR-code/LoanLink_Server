@@ -4,11 +4,15 @@ const app = express();
 const port = process.env.PORT || 3000;
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+// stripe key
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 // admin sdk
 let admin = require("firebase-admin");
 
 let serviceAccount = require("./loanlink-e1e14-firebase-adminsdk.json");
+const { default: Stripe } = require("stripe");
+const { Transaction } = require("firebase-admin/firestore");
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -61,6 +65,85 @@ async function run() {
     const loanApplicationsCollection =
       LoanLinkDB.collection("LoanApplications");
     const usersCollection = LoanLinkDB.collection("users");
+    const paymentCollection = LoanLinkDB.collection("payments");
+    // PAYMENT RELATED APIS
+    app.post("/payment-checkout-session", verifyFBToken, async (req, res) => {
+      const paymentInfo = req.body;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              unit_amount: 1000,
+              product_data: {
+                name: "Please Pay The Loan Application Fee",
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        metadata: {
+          loanId: paymentInfo.loanId,
+          loanName: paymentInfo.loanName,
+        },
+        customer_email: paymentInfo.email,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
+
+      res.send({ url: session.url });
+    });
+
+    app.patch("/payment-success", async (req, res) => {
+      const sessionId = req.query.session_id;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const transactionId = session.payment_intent;
+      const query = { TransactionId: transactionId };
+      const paymentExist = await paymentCollection.findOne(query);
+      if (paymentExist) {
+        return res.send({
+          message: "already Exists",
+          TransactionId: transactionId,
+          loanId: session.metadata.loanId,
+        });
+      }
+      if (session.payment_status === "paid") {
+        const id = session.metadata.loanId;
+        const query = { _id: new ObjectId(id) };
+        const update = {
+          $set: {
+            FeeStatus: "Paid",
+            PaidAt: new Date(),
+            transactionId: session.payment_intent,
+          },
+        };
+        const result = await loanApplicationsCollection.updateOne(
+          query,
+          update
+        );
+        const payment = {
+          amount: "10$",
+          customerEmail: session.customer_email,
+          loanId: session.metadata.loanId,
+          loanName: session.metadata.loanName,
+          TransactionId: session.payment_intent,
+          paymentStatus: session.payment_status,
+          PaidAt: new Date(),
+        };
+        if (session.payment_status === "paid") {
+          const paymentResult = await paymentCollection.insertOne(payment);
+          res.send({
+            success: true,
+            modifyParcel: result,
+            loanId: session.metadata.loanId,
+            TransactionId: session.payment_intent,
+            paymentInfo: paymentResult,
+          });
+        }
+      }
+      res.send({ success: false });
+    });
 
     // VERIFY ADMIN MIDDLEWARE
     const verifyAdmin = async (req, res, next) => {
@@ -79,11 +162,14 @@ async function run() {
       const query = {};
       if (email) {
         query.email = email;
+        if (email !== req.decoded_email) {
+          return res.status(401).send({ message: "Unauthorized Access" });
+        }
       }
       const result = await loansCollection.find(query).toArray();
       res.send(result);
     });
-    app.get("/loans/dashboard/manager", async (req, res) => {
+    app.get("/loans/dashboard/manager", verifyFBToken, async (req, res) => {
       const email = req.query.email;
       const query = {};
       if (email) {
@@ -92,6 +178,7 @@ async function run() {
       const result = await loansCollection.find(query).toArray();
       res.send(result);
     });
+
     app.get(
       "/loans/dashboard",
       verifyFBToken,
@@ -117,7 +204,7 @@ async function run() {
     });
 
     // ADD A LOAN
-    app.post("/loans", async (req, res) => {
+    app.post("/loans", verifyFBToken, async (req, res) => {
       const result = await loansCollection.insertOne(req.body);
       res.send(result);
     });
@@ -200,7 +287,7 @@ async function run() {
       }
     );
     // GET ALL PENDING LOAN APPLICATIONS
-    app.get("/loan-application/manager", async (req, res) => {
+    app.get("/loan-application/manager", verifyFBToken, async (req, res) => {
       const Status = req.query.Status;
       const query = {};
       if (Status) {
@@ -209,19 +296,45 @@ async function run() {
       const result = await loanApplicationsCollection.find(query).toArray();
       res.send(result);
     });
-    // CHANGE APPLICATION STATUS
-    app.patch("/loan-application/manager/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const update = { $set: { Status: req.body.Status } };
-      const result = await loanApplicationsCollection.updateOne(query, update);
+    // GET ALL USER LOAN APPLICATIONS
+    app.get("/loan-application/user", verifyFBToken, async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      const result = await loanApplicationsCollection.find(query).toArray();
       res.send(result);
     });
+    // CHANGE APPLICATION STATUS
+    app.patch(
+      "/loan-application/manager/:id",
+      verifyFBToken,
+      async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const update = {
+          $set: { Status: req.body.Status, updatedAt: new Date() },
+        };
+        const result = await loanApplicationsCollection.updateOne(
+          query,
+          update
+        );
+        res.send(result);
+      }
+    );
     // GET LOAN BY ID
-    app.get("/loan-application/:id", async (req, res) => {
+    app.get("/loan-application/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await loanApplicationsCollection.findOne(query);
+      res.send(result);
+    });
+    // DELETE LOAN BY ID
+    app.delete("/loan-application/:id", verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await loanApplicationsCollection.deleteOne(query);
       res.send(result);
     });
     // APPLY A LOAN
