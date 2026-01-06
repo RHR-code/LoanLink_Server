@@ -1,8 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
-const port = process.env.PORT || 3000;
 require("dotenv").config();
+const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 // stripe key
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
@@ -10,9 +10,16 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET);
 // admin sdk
 let admin = require("firebase-admin");
 
-let serviceAccount = require("./loanlink-e1e14-firebase-adminsdk.json");
+// let serviceAccount = require("./loanlink-e1e14-firebase-adminsdk.json");
 const { default: Stripe } = require("stripe");
 const { Transaction } = require("firebase-admin/firestore");
+
+// const serviceAccount = require("./firebase-admin-key.json");
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8"
+);
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -57,7 +64,7 @@ app.get("/", (req, res) => {
 // CONNECTING TO MONGODB
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     // DB & COLLECTIONS
     const LoanLinkDB = client.db("LoanLinkDB");
@@ -145,6 +152,15 @@ async function run() {
       res.send({ success: false });
     });
 
+    // get payment history by id
+
+    app.get("/payments/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { TransactionId: id };
+      const result = await paymentCollection.findOne(query);
+      res.send(result);
+    });
+
     // VERIFY ADMIN MIDDLEWARE
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
@@ -159,21 +175,34 @@ async function run() {
     // GET ALL LOANS
     app.get("/loans", async (req, res) => {
       const email = req.query.email;
+      const searchText = req.query.searchText;
+      const sortVal = req.query.sort;
+      const sort = {};
+      if (sortVal) {
+        sort.max_limit = sortVal;
+      }
       const query = {};
+      if (searchText) {
+        query.loan_title = { $regex: searchText, $options: "i" };
+      }
       if (email) {
         query.email = email;
         if (email !== req.decoded_email) {
           return res.status(401).send({ message: "Unauthorized Access" });
         }
       }
-      const result = await loansCollection.find(query).toArray();
+      const result = await loansCollection.find(query).sort(sort).toArray();
       res.send(result);
     });
     app.get("/loans/dashboard/manager", verifyFBToken, async (req, res) => {
       const email = req.query.email;
+      const searchText = req.query.searchText;
       const query = {};
       if (email) {
         query.email = email;
+      }
+      if (searchText) {
+        query.loan_title = { $regex: searchText, $options: "i" };
       }
       const result = await loansCollection.find(query).toArray();
       res.send(result);
@@ -184,8 +213,15 @@ async function run() {
       verifyFBToken,
       verifyAdmin,
       async (req, res) => {
-        const result = await loansCollection.find().toArray();
-        res.send(result);
+        const { limit, skip } = req.query;
+
+        const result = await loansCollection
+          .find()
+          .limit(Number(limit))
+          .skip(Number(skip))
+          .toArray();
+        const count = await loansCollection.countDocuments();
+        res.send({ result, total: count });
       }
     );
     // GET LOANS BY ID
@@ -196,7 +232,7 @@ async function run() {
       res.send(result);
     });
     // GET LOANS BY ID
-    app.get("/loans/:id", async (req, res) => {
+    app.get("/loans/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await loansCollection.findOne(query);
@@ -338,7 +374,7 @@ async function run() {
       res.send(result);
     });
     // APPLY A LOAN
-    app.post("/loan-application", async (req, res) => {
+    app.post("/loan-application", verifyFBToken, async (req, res) => {
       const loanApp = req.body;
       loanApp.Status = "Pending";
       loanApp.FeeStatus = "Unpaid";
@@ -354,14 +390,23 @@ async function run() {
       if (userExists) {
         return;
       }
-      req.body.role = "User";
+      // req.body.role = "User";
       req.body.createdAt = new Date();
       const result = await usersCollection.insertOne(req.body);
       res.send(result);
     });
     // GET USERS
     app.get("/users", verifyFBToken, verifyAdmin, async (req, res) => {
-      const result = await usersCollection.find().toArray();
+      const role = req.query.role;
+      const searchText = req.query.searchText;
+      const query = {};
+      if (role) {
+        query.role = role;
+      }
+      if (searchText) {
+        query.name = { $regex: searchText, $options: "i" };
+      }
+      const result = await usersCollection.find(query).toArray();
       res.send(result);
     });
     // GET A USER BY ID
@@ -372,7 +417,9 @@ async function run() {
         query.email = email;
       }
       const result = await usersCollection.findOne(query);
-      res.send({ role: result?.role || "user" });
+      console.log("Role", result);
+
+      res.send({ role: result?.role || "User" });
     });
     // CHANGE A USER ROLE
     app.patch("/users/:id", verifyFBToken, verifyAdmin, async (req, res) => {
@@ -382,10 +429,23 @@ async function run() {
       const result = await usersCollection.updateOne(query, update);
       res.send(result);
     });
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
+    // SUSPEND A USER ROLE
+    app.patch(
+      "/users/suspend/:id",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const update = { $set: { role: "Suspended" } };
+        const result = await usersCollection.updateOne(query, update);
+        res.send(result);
+      }
     );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
   }
 }
