@@ -177,6 +177,7 @@ async function run() {
       const email = req.query.email;
       const searchText = req.query.searchText;
       const sortVal = req.query.sort;
+      const { limit, skip, categoryText } = req.query;
       const sort = {};
       if (sortVal) {
         sort.max_limit = sortVal;
@@ -191,8 +192,18 @@ async function run() {
           return res.status(401).send({ message: "Unauthorized Access" });
         }
       }
-      const result = await loansCollection.find(query).sort(sort).toArray();
-      res.send(result);
+      if (categoryText && categoryText !== "All") {
+        query.category = { $regex: categoryText, $options: "i" };
+      }
+      const result = await loansCollection
+        .find(query)
+        .limit(Number(limit))
+        .skip(Number(skip))
+        .sort(sort)
+        .toArray();
+      // res.send(result);
+      const count = await loansCollection.countDocuments();
+      res.send({ result, total: count });
     });
     app.get("/loans/dashboard/manager", verifyFBToken, async (req, res) => {
       const email = req.query.email;
@@ -232,7 +243,7 @@ async function run() {
       res.send(result);
     });
     // GET LOANS BY ID
-    app.get("/loans/:id", verifyFBToken, async (req, res) => {
+    app.get("/loans/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await loansCollection.findOne(query);
@@ -284,7 +295,7 @@ async function run() {
       const result = await loansCollection
         .find({ isPopular: true })
         .sort({ createdAt: -1 })
-        .limit(6)
+        .limit(8)
         .toArray();
       res.send(result);
     });
